@@ -1,0 +1,59 @@
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache and Logs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+log.txt
+log*.txt
+
+# Telegram Client Session Files
+*.session
+*.session-journal
+*.session-shm
+*.session-wal
+
+# IDE / Editor Settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Environment Configurations
+config.env
+
+# Node / Web Modules
+node_modules/
+.npm/
+
+# Flutter & Dart Build Files
+filmsclub_flutter_app/.dart_tool/
+filmsclub_flutter_app/.packages
+filmsclub_flutter_app/.flutter-plugins
+filmsclub_flutter_app/.flutter-plugins-dependencies
+filmsclub_flutter_app/build/
+filmsclub_flutter_app/android/local.properties
+filmsclub_flutter_app/android/app/build/
+filmsclub_flutter_app/android/app/src/main/res/values/strings.xml
+filmsclub_flutter_app/ios/Flutter/Generated.xcconfig
+filmsclub_flutter_app/ios/Flutter/flutter_export_environment.sh
+filmsclub_flutter_app/windows/flutter/ephemeral/
+
+# Executables & Binaries
+*.apk
+*.aab
+*.exe
+*.dll
+*.so
+*.dylib
