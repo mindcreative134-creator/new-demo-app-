@@ -7,7 +7,7 @@ import '../models/media.dart';
 class ApiService {
   // Set your local backend address. 10.0.2.2 is the default IP used by the Android emulator
   // to reference the localhost of the development machine running the server.
-  static const String baseUrl = "http://10.0.2.2:8000";
+  static const String baseUrl = "https://new-demo-app.onrender.com";
 
   // --- OTT SECTION API ---
   
