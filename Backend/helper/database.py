@@ -238,7 +238,7 @@ class Database:
 
         return primary_id
 
-    async def insert_media(
+     async def insert_media(
         self,
         metadata_info: dict,
         hash: str,
@@ -251,66 +251,208 @@ class Database:
         encoded_string = await encode_string(data)
 
         if metadata_info['media_type'] == "movie":
-            media = MovieSchema(
-                tmdb_id=metadata_info['tmdb_id'],
-                title=metadata_info['title'],
-                genres=metadata_info['genres'],
-                description=metadata_info['description'],
-                rating=metadata_info['rate'],
-                release_year=metadata_info['year'],
-                poster=metadata_info['poster'],
-                backdrop=metadata_info['backdrop'],
-                runtime=metadata_info['runtime'],
-                media_type=metadata_info['media_type'],
-                languages=metadata_info['languages'],
-                rip=metadata_info['rip'],
-                telegram=[
-                    QualityDetail(
-                        quality=metadata_info['quality'],
-                        id=encoded_string,
-                        name=name,
-                        size=size
-                    )]
-            )
-            return await self.update_movie(media)
+            try:
+                media = MovieSchema(
+                    tmdb_id=metadata_info['tmdb_id'],
+                    title=metadata_info['title'],
+                    genres=metadata_info['genres'],
+                    description=metadata_info['description'],
+                    rating=metadata_info['rate'],
+                    release_year=metadata_info['year'],
+                    poster=metadata_info['poster'],
+                    backdrop=metadata_info['backdrop'],
+                    runtime=metadata_info['runtime'],
+                    media_type=metadata_info['media_type'],
+                    languages=metadata_info['languages'],
+                    rip=metadata_info['rip'],
+                    telegram=[
+                        QualityDetail(
+                            quality=metadata_info['quality'],
+                            id=encoded_string,
+                            name=name,
+                            size=size
+                        )]
+                )
+                return await self.update_movie(media)
+            except Exception as e:
+                LOGGER.error(f"Pydantic Validation Error for Movie: {e}. Bypassing validation and inserting raw document.")
+                primary_id = None
+                for db in self.dbs:
+                    movie_collection = db["movie"]
+                    movie_dict = {
+                        "tmdb_id": int(metadata_info.get('tmdb_id', 99999999)),
+                        "title": metadata_info.get('title', name),
+                        "genres": metadata_info.get('genres', ["Action"]),
+                        "description": metadata_info.get('description', ""),
+                        "rating": float(metadata_info.get('rate', 7.5)),
+                        "release_year": int(metadata_info.get('year', 2026)),
+                        "poster": metadata_info.get('poster', ""),
+                        "backdrop": metadata_info.get('backdrop', ""),
+                        "media_type": metadata_info.get('media_type', "movie"),
+                        "runtime": int(metadata_info.get('runtime', 120)),
+                        "languages": metadata_info.get('languages', ['hi']),
+                        "rip": metadata_info.get('rip', 'Blu-ray'),
+                        "telegram": [{
+                            "quality": metadata_info.get('quality', 'HD'),
+                            "id": encoded_string,
+                            "name": name,
+                            "size": size
+                        }],
+                        "updated_on": datetime.utcnow()
+                    }
+                    existing_media = await movie_collection.find_one({"tmdb_id": movie_dict["tmdb_id"]})
+                    if not existing_media:
+                        result = await movie_collection.insert_one(movie_dict.copy())
+                        if db == self.dbs[0]:
+                            primary_id = result.inserted_id
+                    else:
+                        updated = False
+                        for quality in movie_dict["telegram"]:
+                            existing_quality = next(
+                                (q for q in existing_media.get("telegram", []) 
+                                 if q["quality"] == quality["quality"]), None)
+                            if existing_quality:
+                                existing_quality.update(quality)
+                                updated = True
+                            else:
+                                if "telegram" not in existing_media:
+                                    existing_media["telegram"] = []
+                                existing_media["telegram"].append(quality)
+                                updated = True
+                        if updated:
+                            existing_media["updated_on"] = datetime.utcnow()
+                            existing_media["languages"] = movie_dict["languages"]
+                            existing_media["rip"] = movie_dict["rip"]
+                            await movie_collection.replace_one({"tmdb_id": movie_dict["tmdb_id"]}, existing_media)
+                        if db == self.db:
+                            primary_id = existing_media["_id"]
+                return primary_id
         else:
-            tv_show = TVShowSchema(
-                tmdb_id=metadata_info['tmdb_id'],
-                title=metadata_info['title'],
-                genres=metadata_info['genres'],
-                description=metadata_info['description'],
-                rating=metadata_info['rate'],
-                release_year=metadata_info['year'],
-                poster=metadata_info['poster'],
-                backdrop=metadata_info['backdrop'],
-                media_type=metadata_info['media_type'],
-                status=metadata_info['status'],
-                total_seasons=metadata_info['total_seasons'],
-                total_episodes=metadata_info['total_episodes'],
-                languages=metadata_info['languages'],
-                rip=metadata_info['rip'],
-                seasons=[
-                    Season(
-                        season_number=metadata_info['season_number'],
-                        episodes=[
-                            Episode(
-                                episode_number=metadata_info['episode_number'],
-                                title=metadata_info['episode_title'],
-                                episode_backdrop=metadata_info['episode_backdrop'],
-                                telegram=[
-                                    QualityDetail(
-                                        quality=metadata_info['quality'],
-                                        id=encoded_string,
-                                        name=name,
-                                        size=size
-                                    )
-                                ]
-                            )
-                        ]
-                    )
-                ]
-            )
-            return await self.update_tv_show(tv_show)
+            try:
+                tv_show = TVShowSchema(
+                    tmdb_id=metadata_info['tmdb_id'],
+                    title=metadata_info['title'],
+                    genres=metadata_info['genres'],
+                    description=metadata_info['description'],
+                    rating=metadata_info['rate'],
+                    release_year=metadata_info['year'],
+                    poster=metadata_info['poster'],
+                    backdrop=metadata_info['backdrop'],
+                    media_type=metadata_info['media_type'],
+                    status=metadata_info['status'],
+                    total_seasons=metadata_info['total_seasons'],
+                    total_episodes=metadata_info['total_episodes'],
+                    languages=metadata_info['languages'],
+                    rip=metadata_info['rip'],
+                    seasons=[
+                        Season(
+                            season_number=metadata_info['season_number'],
+                            episodes=[
+                                Episode(
+                                    episode_number=metadata_info['episode_number'],
+                                    title=metadata_info['episode_title'],
+                                    episode_backdrop=metadata_info['episode_backdrop'],
+                                    telegram=[
+                                        QualityDetail(
+                                            quality=metadata_info['quality'],
+                                            id=encoded_string,
+                                            name=name,
+                                            size=size
+                                        )
+                                    ]
+                                )
+                            ]
+                        )
+                    ]
+                )
+                return await self.update_tv_show(tv_show)
+            except Exception as e:
+                LOGGER.error(f"Pydantic Validation Error for TV Show: {e}. Bypassing validation and inserting raw document.")
+                primary_id = None
+                for db in self.dbs:
+                    tv_collection = db["tv"]
+                    tv_dict = {
+                        "tmdb_id": int(metadata_info.get('tmdb_id', 99999999)),
+                        "title": metadata_info.get('title', name),
+                        "genres": metadata_info.get('genres', ["Action"]),
+                        "description": metadata_info.get('description', ""),
+                        "rating": float(metadata_info.get('rate', 7.5)),
+                        "release_year": int(metadata_info.get('year', 2026)),
+                        "poster": metadata_info.get('poster', ""),
+                        "backdrop": metadata_info.get('backdrop', ""),
+                        "media_type": metadata_info.get('media_type', "tv"),
+                        "status": metadata_info.get('status', 'Ended'),
+                        "total_seasons": int(metadata_info.get('total_seasons', 1)),
+                        "total_episodes": int(metadata_info.get('total_episodes', 1)),
+                        "languages": metadata_info.get('languages', ['hi']),
+                        "rip": metadata_info.get('rip', 'Blu-ray'),
+                        "seasons": [{
+                            "season_number": int(metadata_info.get('season_number', 1)),
+                            "episodes": [{
+                                "episode_number": int(metadata_info.get('episode_number', 1)),
+                                "title": metadata_info.get('episode_title', 'Episode 1'),
+                                "episode_backdrop": metadata_info.get('episode_backdrop', ""),
+                                "telegram": [{
+                                    "quality": metadata_info.get('quality', 'HD'),
+                                    "id": encoded_string,
+                                    "name": name,
+                                    "size": size
+                                }]
+                            }]
+                        }],
+                        "updated_on": datetime.utcnow()
+                    }
+                    existing_media = await tv_collection.find_one({"tmdb_id": tv_dict["tmdb_id"]})
+                    if not existing_media:
+                        result = await tv_collection.insert_one(tv_dict.copy())
+                        if db == self.dbs[0]:
+                            primary_id = result.inserted_id
+                    else:
+                        updated = False
+                        for season in tv_dict["seasons"]:
+                            existing_season = next(
+                                (s for s in existing_media.get("seasons", []) 
+                                 if s["season_number"] == season["season_number"]), None)
+                            
+                            if existing_season:
+                                for episode in season["episodes"]:
+                                    existing_episode = next(
+                                        (e for e in existing_season.get("episodes", []) 
+                                         if e["episode_number"] == episode["episode_number"]), None)
+                                    
+                                    if existing_episode:
+                                        for quality in episode["telegram"]:
+                                            existing_quality = next(
+                                                (q for q in existing_episode.get("telegram", []) 
+                                                 if q["quality"] == quality["quality"]), None)
+                                            
+                                            if existing_quality:
+                                                existing_quality.update(quality)
+                                                updated = True
+                                            else:
+                                                if "telegram" not in existing_episode:
+                                                    existing_episode["telegram"] = []
+                                                existing_episode["telegram"].append(quality)
+                                                updated = True
+                                    else:
+                                        if "episodes" not in existing_season:
+                                            existing_season["episodes"] = []
+                                        existing_season["episodes"].append(episode)
+                                        updated = True
+                            else:
+                                if "seasons" not in existing_media:
+                                    existing_media["seasons"] = []
+                                existing_media["seasons"].append(season)
+                                updated = True
+
+                        if updated:
+                            existing_media["updated_on"] = datetime.utcnow()
+                            existing_media["languages"] = tv_dict["languages"]
+                            existing_media["rip"] = tv_dict["rip"]
+                            await tv_collection.replace_one({"tmdb_id": tv_dict["tmdb_id"]}, existing_media)
+                        if db == self.db:
+                            primary_id = existing_media["_id"]
+                return primary_id
 
     async def sort_tv_shows(
         self, 

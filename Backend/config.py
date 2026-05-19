@@ -19,7 +19,7 @@ class Telegram:
     PORT = int(getenv("PORT", "8000"))
     BASE_URL = getenv("BASE_URL", "0.0.0.0").rstrip('/')
     AUTH_CHANNEL = [channel.strip() for channel in (getenv("AUTH_CHANNEL") or "").split(",") if channel.strip()]
-    DATABASE = getenv("DATABASE", "mongodb+srv://Keshav:Keshav@cluster0.ndw3zfh.mongodb.net/?appName=Cluster0").split(", ")
+    DATABASE = [db.strip() for db in (getenv("DATABASE", "mongodb+srv://Keshav:Keshav@cluster0.ndw3zfh.mongodb.net/?appName=Cluster0")).split(",") if db.strip()]
     TMDB_API = getenv("TMDB_API", "f9dbeb078807efcbb1e3a72cd80881b3")
     IMDB_API = getenv("IMDB_API", "https://imdb-api-lux.wemedia360.workers.dev/").rstrip('/')
     UPSTREAM_REPO = getenv("UPSTREAM_REPO", "https://github.com/keshav6606/filmsclub-backend")
