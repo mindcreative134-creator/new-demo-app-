@@ -86,7 +86,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   Text(
                     errorMessage,
                     style: const TextStyle(color: Colors.white70, fontSize: 16),
-                    textAlign: Center,
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

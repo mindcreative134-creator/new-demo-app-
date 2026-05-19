@@ -91,7 +91,7 @@ class _NewsScreenState extends State<NewsScreen> {
                       width: double.infinity,
                       height: 200,
                       fit: BoxFit.cover,
-                      errorWidget: (c, e, o) => Container(color: Colors.white05, height: 200),
+                      errorBuilder: (c, e, o) => Container(color: Colors.white10, height: 200),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -239,7 +239,7 @@ class _NewsScreenState extends State<NewsScreen> {
                                         width: double.infinity,
                                         height: 160,
                                         fit: BoxFit.cover,
-                                        errorWidget: (c, e, o) => Container(color: Colors.white05, height: 160),
+                                        errorBuilder: (c, e, o) => Container(color: Colors.white10, height: 160),
                                       ),
                                     ),
                                     Padding(

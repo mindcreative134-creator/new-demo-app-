@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Container(
                         width: 40,
                         height: 5,
-                        margin: const EdgeInsets.bottom: 20,
+                        margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
                       ),
                       // Search Box
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       return ListTile(
                                         leading: ClipRRect(
                                           borderRadius: BorderRadius.circular(6),
-                                          child: Image.network(m['poster'], width: 40, height: 60, fit: BoxFit.cover, errorWidget: (c,e,o) => const Icon(Icons.image)),
+                                          child: Image.network(m['poster'], width: 40, height: 60, fit: BoxFit.cover, errorBuilder: (c,e,o) => const Icon(Icons.image)),
                                         ),
                                         title: Text(m['title'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                         subtitle: Text("${m['media_type'].toString().toUpperCase()} • ${m['release_year']}", style: const TextStyle(color: Colors.white54)),

@@ -106,7 +106,7 @@ class _MainCoordinatorScreenState extends State<MainCoordinatorScreen> {
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Feed"),
-            BottomNavigationBarItem(icon: Icon(Icons.film), label: "OTT"),
+            BottomNavigationBarItem(icon: Icon(Icons.movie), label: "OTT"),
             BottomNavigationBarItem(icon: Icon(Icons.tv), label: "Live TV"),
             BottomNavigationBarItem(icon: Icon(Icons.sports_soccer), label: "Sports"),
             BottomNavigationBarItem(icon: Icon(Icons.newspaper), label: "News"),
@@ -305,7 +305,7 @@ class _OttBrowsingScreenState extends State<OttBrowsingScreen> {
                   child: CachedNetworkImage(
                     imageUrl: m.poster,
                     fit: BoxFit.cover,
-                    placeholder: (c, u) => Container(color: Colors.white05),
+                    placeholder: (c, u) => Container(color: Colors.white10),
                     errorWidget: (c, u, e) => const Icon(Icons.image),
                   ),
                 ),
@@ -347,7 +347,7 @@ class _OttBrowsingScreenState extends State<OttBrowsingScreen> {
                   child: CachedNetworkImage(
                     imageUrl: s.poster,
                     fit: BoxFit.cover,
-                    placeholder: (c, u) => Container(color: Colors.white05),
+                    placeholder: (c, u) => Container(color: Colors.white10),
                     errorWidget: (c, u, e) => const Icon(Icons.image),
                   ),
                 ),

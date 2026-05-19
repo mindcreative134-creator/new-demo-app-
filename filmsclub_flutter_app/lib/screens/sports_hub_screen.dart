@@ -133,7 +133,7 @@ class _SportsHubScreenState extends State<SportsHubScreen> {
                                   children: [
                                     // Header: Category, Status Tag
                                     Row(
-                                      justifyAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Row(
                                           children: [
@@ -178,7 +178,7 @@ class _SportsHubScreenState extends State<SportsHubScreen> {
                                         Expanded(
                                           child: Column(
                                             children: [
-                                              Image.network(fix.teamALogo, width: 50, height: 50, errorWidget: (c, e, o) => const CircleAvatar(child: Icon(Icons.shield))),
+                                              Image.network(fix.teamALogo, width: 50, height: 50, errorBuilder: (c, e, o) => const CircleAvatar(child: Icon(Icons.shield))),
                                               const SizedBox(height: 8),
                                               Text(fix.teamA, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), textAlign: TextAlign.center, maxLines: 1),
                                             ],
@@ -196,7 +196,7 @@ class _SportsHubScreenState extends State<SportsHubScreen> {
                                         Expanded(
                                           child: Column(
                                             children: [
-                                              Image.network(fix.teamBLogo, width: 50, height: 50, errorWidget: (c, e, o) => const CircleAvatar(child: Icon(Icons.shield))),
+                                              Image.network(fix.teamBLogo, width: 50, height: 50, errorBuilder: (c, e, o) => const CircleAvatar(child: Icon(Icons.shield))),
                                               const SizedBox(height: 8),
                                               Text(fix.teamB, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), textAlign: TextAlign.center, maxLines: 1),
                                             ],
@@ -215,7 +215,7 @@ class _SportsHubScreenState extends State<SportsHubScreen> {
                                         child: Text(
                                           fix.score!,
                                           style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14),
-                                          textAlign: Center,
+                                          textAlign: TextAlign.center,
                                         ),
                                       ),
                                     
