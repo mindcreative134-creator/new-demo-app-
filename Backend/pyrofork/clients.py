@@ -39,6 +39,9 @@ async def start_client(client_id, token):
 
 async def initialize_clients():
     multi_clients[0], work_loads[0] = StreamBot, 0
+    if not Telegram.MULTI_CLIENT:
+        LOGGER.info("Multi-Client Mode is disabled, using only the main bot client.")
+        return
     all_tokens = TokenParser.parse_from_env()
     if not all_tokens:
         LOGGER.info("No additional Bot Clients found, Using default client")
