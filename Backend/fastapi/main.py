@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from Backend.helper.pyro import get_readable_time
 from Backend import StartTime, __version__, db
 from Backend.helper.modal import ChannelSchema, EditorialPostSchema, SportsFixtureSchema, MovieSchema, TVShowSchema
+from pyrogram.enums import ChatMemberStatus
 
 
 app = FastAPI()
