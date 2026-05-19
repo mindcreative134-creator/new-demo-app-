@@ -337,3 +337,57 @@ async def delete(bot: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"An error occurred: {str(e)}")
         
+
+@Client.on_message(filters.command('index') & filters.private & CustomFilters.owner)
+async def index_channel(bot: Client, message: Message):
+    try:
+        args = message.text.split()
+        if len(args) != 2:
+            return await message.reply_text("❌ Usage: `/index <channel_id_or_username>`\nExample: `/index -1002740721681` or `/index @mychannel`", parse_mode=ParseMode.MARKDOWN)
+        
+        chat_id_str = args[1]
+        try:
+            if chat_id_str.startswith("-100") or chat_id_str.replace("-", "").isdigit():
+                chat_id = int(chat_id_str)
+            else:
+                chat_id = chat_id_str
+        except ValueError:
+            chat_id = chat_id_str
+            
+        status_msg = await message.reply_text("🔍 Fetching channel history and starting indexing... Please wait.")
+        
+        count = 0
+        added = 0
+        skipped = 0
+        
+        async for msg in bot.get_chat_history(chat_id):
+            if msg.video or (msg.document and msg.document.mime_type and msg.document.mime_type.startswith("video/")):
+                file = msg.video or msg.document
+                title = msg.caption.replace("\n", "\\n") if msg.caption else (file.file_name or file.file_id)
+                title = remove_urls(title)
+                if not title.endswith(('.mkv', '.mp4')):
+                    title += '.mkv'
+                
+                metadata_info = await metadata(clean_filename(title), file)
+                if metadata_info:
+                    msg_id = msg.id
+                    hash = file.file_unique_id[:6]
+                    size = get_readable_file_size(file.file_size)
+                    channel = str(msg.chat.id).replace("-100", "")
+                    
+                    await file_queue.put((metadata_info, hash, int(channel), msg_id, size, title))
+                    added += 1
+                else:
+                    skipped += 1
+                count += 1
+                if count % 20 == 0:
+                    await status_msg.edit_text(f"⏳ Processed {count} messages...\nAdded to queue: {added}\nSkipped: {skipped}")
+                await asleep(0.3)
+                
+        await status_msg.edit_text(f"✅ Channel indexing completed!\nTotal processed: {count}\nAdded to queue: {added}\nSkipped: {skipped}")
+    except FloodWait as e:
+        LOGGER.info(f"Sleeping for {e.value}s during indexing.")
+        await asleep(e.value)
+    except Exception as e:
+        LOGGER.error(f"Error indexing channel: {e}")
+        await message.reply_text(f"❌ Error occurred during indexing: {str(e)}")

@@ -23,18 +23,27 @@ class Database:
         self.db_name = db_name
 
     async def connect(self):
-        """Establish a connection to the database."""
+        """Establish a connection to all configured databases."""
         try:
-            if self._conn is not None:
-                await self._conn.close()
-
-            uri = self.connection_uri
-            if isinstance(uri, list):
-                uri = uri[0] if len(uri) > 0 else ""
-            self._conn = motor.motor_asyncio.AsyncIOMotorClient(uri)
-            self.db = self._conn[self.db_name]
-
-            # Ensure collections are assigned
+            self._conns = []
+            self.dbs = []
+            
+            uris = self.connection_uri
+            if not isinstance(uris, list):
+                uris = [uris]
+            
+            for uri in uris:
+                if not uri:
+                    continue
+                conn = motor.motor_asyncio.AsyncIOMotorClient(uri)
+                self._conns.append(conn)
+                self.dbs.append(conn[self.db_name])
+            
+            if not self.dbs:
+                LOGGER.error("No database connections could be initialized.")
+                return
+            
+            self.db = self.dbs[0]
             self.tv_collection = self.db["tv"]
             self.movie_collection = self.db["movie"]
             self.deploy_config = self.db["deploy_config"]  
@@ -45,24 +54,20 @@ class Database:
             self.watchlist_collection = self.db["watchlist"]
             self.continue_collection = self.db["continue_watching"]
 
-            LOGGER.info("Database connection established")
-        
-            # Debug: Print available collections
-           # collections = await self.db.list_collection_names()
-           # LOGGER.info(f"Available collections: {collections}")
-
+            LOGGER.info(f"Database connection established for {len(self.dbs)} database(s)")
+            
+            # Run background synchronization
+            import asyncio
+            asyncio.create_task(self.sync_databases())
         except Exception as e:
             LOGGER.error(f"Error connecting to the database: {e}")
-            self._conn = None
-            self.db = None
         
-
     async def disconnect(self):
-        """Close the database connection."""
-        if self._conn is not None:
-            await self._conn.close()
-            LOGGER.info("Database connection closed")
-        self._conn = None
+        """Close all database connections."""
+        if hasattr(self, "_conns"):
+            for conn in self._conns:
+                await conn.close()
+            LOGGER.info("All database connections closed")
         self.db = None
         self.tv_collection = None
         self.movie_collection = None
@@ -72,6 +77,43 @@ class Database:
         self.analytics_collection = None
         self.watchlist_collection = None
         self.continue_collection = None
+
+    async def sync_databases(self):
+        """Synchronize collections across all databases."""
+        if len(self.dbs) < 2:
+            return
+        
+        try:
+            LOGGER.info("Starting database synchronization...")
+            collections_to_sync = ["movie", "tv", "channels", "editorial", "fixtures"]
+            
+            for col_name in collections_to_sync:
+                all_docs = {}
+                for db in self.dbs:
+                    cursor = db[col_name].find({})
+                    async for doc in cursor:
+                        doc_id = doc.get("tmdb_id") or doc.get("name") or doc.get("title")
+                        if doc_id:
+                            all_docs[doc_id] = doc
+                
+                for doc_id, doc in all_docs.items():
+                    for db in self.dbs:
+                        if col_name == "movie" or col_name == "tv":
+                            existing = await db[col_name].find_one({"tmdb_id": doc["tmdb_id"]})
+                            if not existing:
+                                await db[col_name].insert_one(doc.copy())
+                        elif col_name == "channels":
+                            existing = await db[col_name].find_one({"name": doc["name"]})
+                            if not existing:
+                                await db[col_name].insert_one(doc.copy())
+                        elif col_name == "editorial" or col_name == "fixtures":
+                            existing = await db[col_name].find_one({"title": doc["title"]})
+                            if not existing:
+                                await db[col_name].insert_one(doc.copy())
+                                
+            LOGGER.info("Database synchronization completed successfully!")
+        except Exception as e:
+            LOGGER.error(f"Error during database sync: {e}")
 
     @staticmethod
     def _convert_object_id(document: dict) -> dict:
@@ -88,62 +130,67 @@ class Database:
             LOGGER.error(f"Validation error: {e}")
             return None
 
-        existing_media = await self.tv_collection.find_one({
-            "$or": [
-                {"tmdb_id": tv_show_dict["tmdb_id"]},
-                {"title": tv_show_dict["title"], "release_year": tv_show_dict["release_year"]}
-            ]
-        })
+        primary_id = None
+        for db in self.dbs:
+            tv_collection = db["tv"]
+            existing_media = await tv_collection.find_one({
+                "$or": [
+                    {"tmdb_id": tv_show_dict["tmdb_id"]},
+                    {"title": tv_show_dict["title"], "release_year": tv_show_dict["release_year"]}
+                ]
+            })
 
-        if not existing_media:
-            result = await self.tv_collection.insert_one(tv_show_dict)
-            return result.inserted_id
-
-        updated = False
-        for season in tv_show_dict["seasons"]:
-            existing_season = next(
-                (s for s in existing_media["seasons"] 
-                 if s["season_number"] == season["season_number"]), None)
-            
-            if existing_season:
-                for episode in season["episodes"]:
-                    existing_episode = next(
-                        (e for e in existing_season["episodes"] 
-                         if e["episode_number"] == episode["episode_number"]), None)
+            if not existing_media:
+                result = await tv_collection.insert_one(tv_show_dict.copy())
+                if db == self.db:
+                    primary_id = result.inserted_id
+            else:
+                updated = False
+                for season in tv_show_dict["seasons"]:
+                    existing_season = next(
+                        (s for s in existing_media["seasons"] 
+                         if s["season_number"] == season["season_number"]), None)
                     
-                    if existing_episode:
-                        for quality in episode["telegram"]:
-                            existing_quality = next(
-                                (q for q in existing_episode["telegram"] 
-                                 if q["quality"] == quality["quality"]), None)
+                    if existing_season:
+                        for episode in season["episodes"]:
+                            existing_episode = next(
+                                (e for e in existing_season["episodes"] 
+                                 if e["episode_number"] == episode["episode_number"]), None)
                             
-                            if existing_quality:
-                                existing_quality.update(quality)
-                                updated = True
+                            if existing_episode:
+                                for quality in episode["telegram"]:
+                                    existing_quality = next(
+                                        (q for q in existing_episode["telegram"] 
+                                         if q["quality"] == quality["quality"]), None)
+                                    
+                                    if existing_quality:
+                                        existing_quality.update(quality)
+                                        updated = True
+                                    else:
+                                        existing_episode["telegram"].append(quality)
+                                        updated = True
                             else:
-                                existing_episode["telegram"].append(quality)
+                                existing_season["episodes"].append(episode)
                                 updated = True
                     else:
-                        existing_season["episodes"].append(episode)
+                        existing_media["seasons"].append(season)
                         updated = True
-            else:
-                existing_media["seasons"].append(season)
-                updated = True
 
-        if updated:
-            existing_media["updated_on"] = datetime.utcnow()
-            existing_media["languages"] = tv_show_dict["languages"]
-            existing_media["rip"] = tv_show_dict["rip"]
-            await self.tv_collection.replace_one(
-                {"tmdb_id": tv_show_dict["tmdb_id"]}, existing_media)
-            return existing_media["_id"]
-        else:
-            LOGGER.info(f"No updates made for: {tv_show_dict['tmdb_id']}")
-            return existing_media["_id"]
+                if updated:
+                    existing_media["updated_on"] = datetime.utcnow()
+                    existing_media["languages"] = tv_show_dict["languages"]
+                    existing_media["rip"] = tv_show_dict["rip"]
+                    await tv_collection.replace_one(
+                        {"tmdb_id": tv_show_dict["tmdb_id"]}, existing_media)
+                
+                if db == self.db:
+                    primary_id = existing_media["_id"]
+
+        return primary_id
 
     async def update_movie(self, movie_data: MovieSchema) -> Optional[ObjectId]:
-        if self.movie_collection is None:
-            LOGGER.error("Database collection is not initialized. Did you call db.connect()?")
+        if not self.dbs:
+            LOGGER.error("Database collections are not initialized.")
             return None
         try:
             movie_dict = movie_data.dict()
@@ -151,40 +198,45 @@ class Database:
             LOGGER.error(f"Validation error: {e}")
             return None
 
-        existing_media = await self.movie_collection.find_one({
-            "$or": [
-                {"tmdb_id": movie_dict["tmdb_id"]},
-                {"title": movie_dict["title"], "release_year": movie_dict["release_year"]}
-            ]
-        })
+        primary_id = None
+        for db in self.dbs:
+            movie_collection = db["movie"]
+            existing_media = await movie_collection.find_one({
+                "$or": [
+                    {"tmdb_id": movie_dict["tmdb_id"]},
+                    {"title": movie_dict["title"], "release_year": movie_dict["release_year"]}
+                ]
+            })
 
-        if not existing_media:
-            result = await self.movie_collection.insert_one(movie_dict)
-            return result.inserted_id
-
-        updated = False
-        for quality in movie_dict["telegram"]:
-            existing_quality = next(
-                (q for q in existing_media["telegram"] 
-                 if q["quality"] == quality["quality"]), None)
-            
-            if existing_quality:
-                existing_quality.update(quality)
-                updated = True
+            if not existing_media:
+                result = await movie_collection.insert_one(movie_dict.copy())
+                if db == self.db:
+                    primary_id = result.inserted_id
             else:
-                existing_media["telegram"].append(quality)
-                updated = True
+                updated = False
+                for quality in movie_dict["telegram"]:
+                    existing_quality = next(
+                        (q for q in existing_media["telegram"] 
+                         if q["quality"] == quality["quality"]), None)
+                    
+                    if existing_quality:
+                        existing_quality.update(quality)
+                        updated = True
+                    else:
+                        existing_media["telegram"].append(quality)
+                        updated = True
 
-        if updated:
-            existing_media["updated_on"] = datetime.utcnow()
-            existing_media["languages"] = movie_dict["languages"]
-            existing_media["rip"] = movie_dict["rip"]
-            await self.movie_collection.replace_one(
-                {"tmdb_id": movie_dict["tmdb_id"]}, existing_media)
-            return existing_media["_id"]
-        else:
-            LOGGER.info(f"No updates made for: {movie_dict['tmdb_id']}")
-            return existing_media["_id"]
+                if updated:
+                    existing_media["updated_on"] = datetime.utcnow()
+                    existing_media["languages"] = movie_dict["languages"]
+                    existing_media["rip"] = movie_dict["rip"]
+                    await movie_collection.replace_one(
+                        {"tmdb_id": movie_dict["tmdb_id"]}, existing_media)
+                
+                if db == self.db:
+                    primary_id = existing_media["_id"]
+
+        return primary_id
 
     async def insert_media(
         self,
@@ -494,15 +546,17 @@ class Database:
         media_type: str,
         tmdb_id: int
     ) -> bool:
-        if media_type == "mov":
-            result = await self.movie_collection.delete_one({"tmdb_id": tmdb_id})
-        else:
-            result = await self.tv_collection.delete_one({"tmdb_id": tmdb_id})
+        deleted = False
+        for db in self.dbs:
+            collection = db["movie"] if media_type == "mov" else db["tv"]
+            result = await collection.delete_one({"tmdb_id": tmdb_id})
+            if result.deleted_count > 0:
+                deleted = True
+                LOGGER.info(f"{media_type} with tmdb_id {tmdb_id} deleted successfully from a database.")
         
-        if result.deleted_count > 0:
-            LOGGER.info(f"{media_type} with tmdb_id {tmdb_id} deleted successfully.")
+        if deleted:
             return True
-        LOGGER.info(f"No document found with tmdb_id {tmdb_id}.")
+        LOGGER.info(f"No document found with tmdb_id {tmdb_id} in any database.")
         return False
 
     # === LIVE TV CHANNELS OPERATIONS ===
@@ -510,12 +564,19 @@ class Database:
     async def add_channel(self, channel_data: ChannelSchema) -> Optional[ObjectId]:
         try:
             channel_dict = channel_data.dict()
-            existing = await self.channels_collection.find_one({"name": channel_dict["name"]})
-            if existing:
-                await self.channels_collection.replace_one({"name": channel_dict["name"]}, channel_dict)
-                return existing["_id"]
-            result = await self.channels_collection.insert_one(channel_dict)
-            return result.inserted_id
+            primary_id = None
+            for db in self.dbs:
+                channels_collection = db["channels"]
+                existing = await channels_collection.find_one({"name": channel_dict["name"]})
+                if existing:
+                    await channels_collection.replace_one({"name": channel_dict["name"]}, channel_dict)
+                    if db == self.db:
+                        primary_id = existing["_id"]
+                else:
+                    result = await channels_collection.insert_one(channel_dict.copy())
+                    if db == self.db:
+                        primary_id = result.inserted_id
+            return primary_id
         except Exception as e:
             LOGGER.error(f"Error in add_channel: {e}")
             return None
@@ -541,8 +602,12 @@ class Database:
 
     async def delete_channel(self, name: str) -> bool:
         try:
-            result = await self.channels_collection.delete_one({"name": name})
-            return result.deleted_count > 0
+            deleted = False
+            for db in self.dbs:
+                result = await db["channels"].delete_one({"name": name})
+                if result.deleted_count > 0:
+                    deleted = True
+            return deleted
         except Exception as e:
             LOGGER.error(f"Error in delete_channel: {e}")
             return False
@@ -552,12 +617,19 @@ class Database:
     async def add_editorial(self, post_data: EditorialPostSchema) -> Optional[ObjectId]:
         try:
             post_dict = post_data.dict()
-            existing = await self.editorial_collection.find_one({"title": post_dict["title"]})
-            if existing:
-                await self.editorial_collection.replace_one({"title": post_dict["title"]}, post_dict)
-                return existing["_id"]
-            result = await self.editorial_collection.insert_one(post_dict)
-            return result.inserted_id
+            primary_id = None
+            for db in self.dbs:
+                editorial_collection = db["editorial"]
+                existing = await editorial_collection.find_one({"title": post_dict["title"]})
+                if existing:
+                    await editorial_collection.replace_one({"title": post_dict["title"]}, post_dict)
+                    if db == self.db:
+                        primary_id = existing["_id"]
+                else:
+                    result = await editorial_collection.insert_one(post_dict.copy())
+                    if db == self.db:
+                        primary_id = result.inserted_id
+            return primary_id
         except Exception as e:
             LOGGER.error(f"Error in add_editorial: {e}")
             return None
@@ -583,8 +655,12 @@ class Database:
 
     async def delete_editorial(self, title: str) -> bool:
         try:
-            result = await self.editorial_collection.delete_one({"title": title})
-            return result.deleted_count > 0
+            deleted = False
+            for db in self.dbs:
+                result = await db["editorial"].delete_one({"title": title})
+                if result.deleted_count > 0:
+                    deleted = True
+            return deleted
         except Exception as e:
             LOGGER.error(f"Error in delete_editorial: {e}")
             return False
@@ -594,12 +670,19 @@ class Database:
     async def add_fixture(self, fixture_data: SportsFixtureSchema) -> Optional[ObjectId]:
         try:
             fixture_dict = fixture_data.dict()
-            existing = await self.fixtures_collection.find_one({"title": fixture_dict["title"]})
-            if existing:
-                await self.fixtures_collection.replace_one({"title": fixture_dict["title"]}, fixture_dict)
-                return existing["_id"]
-            result = await self.fixtures_collection.insert_one(fixture_dict)
-            return result.inserted_id
+            primary_id = None
+            for db in self.dbs:
+                fixtures_collection = db["fixtures"]
+                existing = await fixtures_collection.find_one({"title": fixture_dict["title"]})
+                if existing:
+                    await fixtures_collection.replace_one({"title": fixture_dict["title"]}, fixture_dict)
+                    if db == self.db:
+                        primary_id = existing["_id"]
+                else:
+                    result = await fixtures_collection.insert_one(fixture_dict.copy())
+                    if db == self.db:
+                        primary_id = result.inserted_id
+            return primary_id
         except Exception as e:
             LOGGER.error(f"Error in add_fixture: {e}")
             return None
@@ -621,19 +704,27 @@ class Database:
 
     async def update_fixture_score(self, title: str, score: str, status: str) -> bool:
         try:
-            result = await self.fixtures_collection.update_one(
-                {"title": title},
-                {"$set": {"score": score, "status": status, "updated_on": datetime.utcnow()}}
-            )
-            return result.modified_count > 0
+            updated = False
+            for db in self.dbs:
+                result = await db["fixtures"].update_one(
+                    {"title": title},
+                    {"$set": {"score": score, "status": status, "updated_on": datetime.utcnow()}}
+                )
+                if result.modified_count > 0:
+                    updated = True
+            return updated
         except Exception as e:
             LOGGER.error(f"Error in update_fixture_score: {e}")
             return False
 
     async def delete_fixture(self, title: str) -> bool:
         try:
-            result = await self.fixtures_collection.delete_one({"title": title})
-            return result.deleted_count > 0
+            deleted = False
+            for db in self.dbs:
+                result = await db["fixtures"].delete_one({"title": title})
+                if result.deleted_count > 0:
+                    deleted = True
+            return deleted
         except Exception as e:
             LOGGER.error(f"Error in delete_fixture: {e}")
             return False
@@ -649,7 +740,8 @@ class Database:
                 "media_title": media_title,
                 "timestamp": datetime.utcnow()
             }
-            await self.analytics_collection.insert_one(doc)
+            for db in self.dbs:
+                await db["analytics"].insert_one(doc.copy())
         except Exception as e:
             LOGGER.error(f"Error in track_action: {e}")
 
@@ -698,11 +790,12 @@ class Database:
                 "poster": poster,
                 "added_at": datetime.utcnow()
             }
-            await self.watchlist_collection.update_one(
-                {"user_id": user_id, "media_id": media_id},
-                {"$set": doc},
-                upsert=True
-            )
+            for db in self.dbs:
+                await db["watchlist"].update_one(
+                    {"user_id": user_id, "media_id": media_id},
+                    {"$set": doc.copy()},
+                    upsert=True
+                )
             return True
         except Exception as e:
             LOGGER.error(f"Error in add_to_watchlist: {e}")
