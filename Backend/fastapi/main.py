@@ -323,7 +323,10 @@ async def serve_admin_panel(request: Request):
 
 @app.get("/api/channels")
 async def get_channels(category: Optional[str] = Query(None), page: int = Query(1), page_size: int = Query(20)):
-    return await db.get_channels(category=category, page=page, page_size=page_size)
+    channels = await db.get_channels(category=category)
+    skip = (page - 1) * page_size
+    paginated_channels = channels[skip:skip+page_size]
+    return {"channels": paginated_channels, "total_count": len(channels)}
 
 @app.get("/api/channels/categories")
 async def get_channel_categories():
@@ -347,7 +350,10 @@ async def delete_channel(name: str):
 
 @app.get("/api/editorial")
 async def get_editorial(category: Optional[str] = Query(None), page: int = Query(1), page_size: int = Query(20)):
-    return await db.get_editorials(category=category, page=page, page_size=page_size)
+    posts = await db.get_editorial(category=category)
+    skip = (page - 1) * page_size
+    paginated_posts = posts[skip:skip+page_size]
+    return {"posts": paginated_posts, "total_count": len(posts)}
 
 @app.get("/api/editorial/categories")
 async def get_editorial_categories():
