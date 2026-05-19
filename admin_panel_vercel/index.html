@@ -804,7 +804,11 @@
 
         // Manage Dynamic API URL Bindings
         const DEFAULT_BACKEND_URL = "https://new-demo-app.onrender.com";
-        let API_BASE_URL = localStorage.getItem("infinity_backend_url") || DEFAULT_BACKEND_URL;
+        // Only set default if localStorage is empty — do NOT overwrite on every load
+        if (!localStorage.getItem("infinity_backend_url")) {
+            localStorage.setItem("infinity_backend_url", DEFAULT_BACKEND_URL);
+        }
+        let API_BASE_URL = localStorage.getItem("infinity_backend_url");
         document.getElementById('backend-url').value = API_BASE_URL;
         // Auto-connect on load
         checkBackendConnection();
@@ -823,8 +827,10 @@
         async function checkBackendConnection() {
             const dot = document.getElementById('status-dot');
             const text = document.getElementById('status-text');
+            dot.className = "status-dot";
+            text.innerText = "Connecting...";
+            text.style.color = "var(--warning)";
             try {
-                // Ping standard dashboard analytics summary endpoint to check connectivity
                 const res = await fetch(`${API_BASE_URL}/api/admin/analytics/summary`);
                 if (res.ok) {
                     dot.className = "status-dot active";
