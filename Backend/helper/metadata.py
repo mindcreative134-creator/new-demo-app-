@@ -16,11 +16,11 @@ tmdb = aioTMDb(key=Telegram.TMDB_API, language="en-US", region="US")
 async def metadata(filename: str, media) -> dict:
     try:
         parsed = PTN.parse(filename)
-        title = parsed.get('title')
-        if not title:
-            # Fallback to cleaning the filename directly if title parsing fails
-            title = filename.rsplit('.', 1)[0].replace('.', ' ').replace('_', ' ').replace('-', ' ').strip()
+        if 'excess' in parsed and any('combined' in item.lower() for item in parsed['excess']):
+            LOGGER.info(f"Skipping {filename} due to 'combined' in excess")
+            return None
 
+        title = parsed.get('title')
         season = parsed.get('season')
         episode = parsed.get('episode')
         year = parsed.get('year')
@@ -28,10 +28,13 @@ async def metadata(filename: str, media) -> dict:
         languages = normalize_languages(parsed.get('language'))
         rip = parsed.get('quality')
 
-        if isinstance(season, list):
-            season = season[0]
-        if isinstance(episode, list):
-            episode = episode[0]
+        if isinstance(season, list) or isinstance(episode, list):
+            LOGGER.warning(f"Invalid format: Season/Episode is list — {filename}, parsed: {parsed}")
+            return None
+
+        if season and not episode:
+            LOGGER.warning(f"Missing episode for season: {filename}, parsed: {parsed}")
+            return None
 
         try:
             default_id = extract_tmdb_id(Backend.USE_DEFAULT_ID)
@@ -46,78 +49,20 @@ async def metadata(filename: str, media) -> dict:
                 LOGGER.debug(f"Failed to extract TMDB ID from filename {filename}: {e}")
                 default_id = None
 
-        res = None
-        if season and episode:
-            LOGGER.info(f"Fetching TV metadata for: {title} S{season}E{episode}")
-            res = await fetch_tv_metadata(title, season, episode, year, quality, default_id, languages, rip)
-        else:
-            LOGGER.info(f"Fetching movie metadata for: {title} ({year})")
-            res = await fetch_movie_metadata(title, year, quality, default_id, languages, rip)
+        if title:
+            if season and episode:
+                LOGGER.info(f"Fetching TV metadata for: {title} S{season}E{episode}")
+                return await fetch_tv_metadata(title, season, episode, year, quality, default_id, languages, rip)
+            else:
+                LOGGER.info(f"Fetching movie metadata for: {title} ({year})")
+                return await fetch_movie_metadata(title, year, quality, default_id, languages, rip)
 
-        if res:
-            return res
-
-        # PREMIUM FALLBACK SYSTEM: If TMDb lookup failed, generate robust metadata based on parsed file details
-        import random
-        placeholder_id = random.randint(10000000, 99999999)
-        LOGGER.info(f"Generating premium fallback metadata for {title} (ID: {placeholder_id})")
-        if season or episode:
-            return {
-                "tmdb_id": placeholder_id,
-                "title": title,
-                "year": year or 2026,
-                "rate": 7.5,
-                "description": f"Indexed series: {title}",
-                "total_seasons": season or 1,
-                "total_episodes": episode or 1,
-                "poster": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=500",
-                "backdrop": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200",
-                "status": "Ended",
-                "genres": ["Action", "Adventure"],
-                "media_type": "tv",
-                "season_number": season or 1,
-                "episode_number": episode or 1,
-                "episode_title": f"S{season or 1}E{episode or 1}",
-                "episode_backdrop": "",
-                "quality": quality or "HD",
-                "languages": languages or ['hi'],
-                "rip": rip or 'Blu-ray'
-            }
-        else:
-            return {
-                "tmdb_id": placeholder_id,
-                "title": title,
-                "year": year or 2026,
-                "rate": 7.5,
-                "description": f"Indexed movie: {title}",
-                "poster": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=500",
-                "backdrop": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200",
-                "media_type": "movie",
-                "genres": ["Action", "Drama"],
-                "runtime": 120,
-                "quality": quality or "HD",
-                "languages": languages or ['hi'],
-                "rip": rip or 'Blu-ray'
-            }
+        LOGGER.info(f"No title parsed from: {filename} (parsed: {parsed})")
+        return None
 
     except Exception as e:
-        LOGGER.error(f"Unhandled error while parsing metadata for {filename}: {e}", exc_info=True)
-        # Ultimate fallback structure to prevent any loop crash or unhandled drops
-        return {
-            "tmdb_id": 99999999,
-            "title": filename.rsplit('.', 1)[0].replace('.', ' ').replace('_', ' ').replace('-', ' ').strip(),
-            "year": 2026,
-            "rate": 7.0,
-            "description": f"Indexed file: {filename}",
-            "poster": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=500",
-            "backdrop": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200",
-            "media_type": "movie",
-            "genres": ["Action"],
-            "runtime": 120,
-            "quality": "HD",
-            "languages": ['hi'],
-            "rip": 'Blu-ray'
-        }
+        LOGGER.error(f"Unhandled error while parsing metadata for {filename}: {e}")
+        return None
 
 
 
@@ -312,5 +257,3 @@ async def fetch_movie_metadata(title: str, year=None, quality=None, default_id=N
     except Exception as e:
         LOGGER.error(f"Unhandled error in fetch_movie_metadata for '{title}': {e}")
         return None
-
-        
