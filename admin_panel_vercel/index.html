@@ -803,8 +803,11 @@
         lucide.createIcons();
 
         // Manage Dynamic API URL Bindings
-        let API_BASE_URL = localStorage.getItem("infinity_backend_url") || "http://localhost:8000";
+        const DEFAULT_BACKEND_URL = "https://new-demo-app.onrender.com";
+        let API_BASE_URL = localStorage.getItem("infinity_backend_url") || DEFAULT_BACKEND_URL;
         document.getElementById('backend-url').value = API_BASE_URL;
+        // Auto-connect on load
+        checkBackendConnection();
 
         function saveBackendUrl() {
             let url = document.getElementById('backend-url').value.trim();
