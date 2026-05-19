@@ -28,7 +28,10 @@ class Database:
             if self._conn is not None:
                 await self._conn.close()
 
-            self._conn = motor.motor_asyncio.AsyncIOMotorClient(self.connection_uri)
+            uri = self.connection_uri
+            if isinstance(uri, list):
+                uri = uri[0] if len(uri) > 0 else ""
+            self._conn = motor.motor_asyncio.AsyncIOMotorClient(uri)
             self.db = self._conn[self.db_name]
 
             # Ensure collections are assigned
