@@ -238,7 +238,7 @@ class Database:
 
         return primary_id
 
-     async def insert_media(
+    async def insert_media(
         self,
         metadata_info: dict,
         hash: str,
