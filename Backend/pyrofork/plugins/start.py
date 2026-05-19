@@ -245,7 +245,7 @@ for _ in range(1):
 async def file_receive_handler(bot: Client, message: Message):
     if str(message.chat.id) in Telegram.AUTH_CHANNEL:
         try:
-            if message.video or message.document.mime_type.startswith("video/"):
+            if message.video or (message.document and message.document.mime_type and message.document.mime_type.startswith("video/")):
                 file = message.video or message.document
                 if message.caption:
                     title = message.caption.replace("\n", "\\n")
@@ -259,20 +259,19 @@ async def file_receive_handler(bot: Client, message: Message):
                 
                 metadata_info = await metadata(clean_filename(title), file)
                 if metadata_info is None:
-                    return await message.reply_text("> Not added check log")
+                    LOGGER.warning(f"Metadata could not be parsed or generated for {title}")
+                    return
                 title = remove_urls(title)
                 if not title.endswith(('.mkv', '.mp4')):
                     title += '.mkv'
                 await file_queue.put((metadata_info, hash, int(channel), msg_id, size, title))
             else:
-                await message.reply_text("> Not supported")
+                LOGGER.info(f"Skipping non-video file in channel {message.chat.id}")
         except FloodWait as e:
-            LOGGER.info(f"Sleeping for {str(e.value)}s")
+            LOGGER.info(f"Sleeping for {str(e.value)}s due to FloodWait in receiver")
             await asleep(e.value)
-            await message.reply_text(text=f"Got Floodwait of {str(e.value)}s",
-                                disable_web_page_preview=True, parse_mode=ParseMode.MARKDOWN)
-    else:
-        await message.reply(text="> Channel is not in AUTH_CHANNEL")
+        except Exception as e:
+            LOGGER.error(f"Error in file_receive_handler: {e}", exc_info=True)
 
 
 @Client.on_message(filters.command('caption') & filters.private & CustomFilters.owner)
